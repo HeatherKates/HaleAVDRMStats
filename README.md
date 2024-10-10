@@ -11,9 +11,9 @@ This repository contains the data and analysis for the manuscript **"A Potential
 ├── code
 │   └── AVDRM_SubstanceUse.LogisticRegressionModeling.Rmd
 ├── data
-│   └── TableS1.csv
+│   └── TableS1.csv #This file is hidden prior to publication. Email `hkates@ufl.edu` for access.
 ├── original_data
-│   └── Hale2023_originalData.csv
+│   └── Hale2023_originalData.csv #This file is hidden prior to publication. Email `hkates@ufl.edu` for access.
 └── results
     ├── Table2.csv
     └── TableS2.csv
