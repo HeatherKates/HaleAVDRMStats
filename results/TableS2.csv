@@ -1,0 +1,8 @@
+"","Model","AIC","BIC","Significant_Factors","P_Values"
+"Model with Marijuana * Poly_Substance","Model with Marijuana * Poly_Substance",183.382534847982,218.742494273159,"Marijuana1","0.04987"
+"All Interactions","All Interactions",183.435438123549,236.475377261315,"Marijuana1, Marijuana1:Poly_Substance1","0.02247, 0.04256"
+"Model with Opiates * Poly_Substance","Model with Opiates * Poly_Substance",184.625525390298,219.985484815475,"None","None"
+"Base Model (No Interactions)","Base Model (No Interactions)",185.140097878032,216.080062375062,"None","None"
+"Model with Amphetamine * Poly_Substance","Model with Amphetamine * Poly_Substance",185.595156790089,220.955116215267,"None","None"
+"Model with Cocaine * Poly_Substance","Model with Cocaine * Poly_Substance",186.373921477886,221.733880903063,"None","None"
+"Model with Sedatives * Poly_Substance","Model with Sedatives * Poly_Substance",186.74761162836,222.107571053537,"None","None"

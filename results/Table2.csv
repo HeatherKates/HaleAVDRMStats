@@ -1,0 +1,9 @@
+"Predictor","Odds_Ratio","CI_95_Lower","CI_95_Upper","P_Value"
+"(Intercept)",0.058,0.028,0.108,0
+"Marijuana1",0.125,0.007,0.675,0.04987
+"Poly_Substance1",0.573,0.025,5.181,0.65543
+"Amphetamine1",1.348,0.332,4.512,0.6472
+"Cocaine1",0.494,0.118,1.751,0.29532
+"Sedatives1",0.493,0.072,2.022,0.38478
+"Opiates1",1.016,0.31,3.028,0.97745
+"Marijuana1:Poly_Substance1",12.598,0.976,515.52,0.09506
