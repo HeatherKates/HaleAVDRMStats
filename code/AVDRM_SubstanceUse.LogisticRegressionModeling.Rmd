@@ -31,7 +31,7 @@ colnames(data) <- gsub("__","_",colnames(data))
 data <- na.omit(data)
 # Convert binary variables (substance use) to factors
 data_factor <- data %>%
-  mutate(across(c(AVDRM, Marijuana, Amphetamine, Cocaine, Sedatives, Opiates, Phencyclidine, Poly_Substance),
+  mutate(across(c(ARVDRM, Cannabis, Amphetamine, Cocaine, Sedatives, Opiates, Phencyclidine, Poly_Substance),
                 ~ factor(.x, levels = c(0, 1), labels = c(0, 1))))
 #write.csv(data_factor,"data/TableS1.csv",row.names = FALSE)
 ```
@@ -44,17 +44,17 @@ demo_data <- read.csv("original_data/Demographic_data.csv")
 data_factor_demo <- merge(data_factor,demo_data,by="PATID")
 ```
 
-### Build and test all possible models and compare model fit values (AIC) to see which model best fits the data and and whether the factors in that model are significant predictors of AVDRM
+### Build and test all possible models and compare model fit values (AIC) to see which model best fits the data and and whether the factors in that model are significant predictors of ARVDRM
 
 ```{r}
 # Create a list to store the models and their AIC/BIC values along with significant factors and p-values
 model_comparisons <- list()
 
 # Define the base formula for the model without interactions
-base_formula <- "AVDRM ~ Marijuana + Amphetamine + Cocaine + Sedatives + Opiates + Poly_Substance"
+base_formula <- "ARVDRM ~ Cannabis + Amphetamine + Cocaine + Sedatives + Opiates + Poly_Substance"
 
 # Define interaction terms for each substance with Poly_Substance
-interaction_terms <- c("Marijuana:Poly_Substance", "Amphetamine : Poly_Substance", "Cocaine : Poly_Substance", 
+interaction_terms <- c("Cannabis:Poly_Substance", "Amphetamine : Poly_Substance", "Cocaine : Poly_Substance", 
                        "Sedatives : Poly_Substance", "Opiates : Poly_Substance")
 
 # Function to fit the model and store AIC, BIC, significant factors, and their p-values
@@ -139,7 +139,7 @@ datatable(model_results_sorted,
 ### Get the odds ratio for the best model
 
 ```{r}
-best_model <- glm(AVDRM ~ Marijuana * Poly_Substance + Amphetamine + Cocaine + Sedatives + Opiates,
+best_model <- glm(ARVDRM ~ Cannabis * Poly_Substance + Amphetamine + Cocaine + Sedatives + Opiates,
                   data = data_factor, family = binomial())
 
 # Calculate odds ratios and confidence intervals
