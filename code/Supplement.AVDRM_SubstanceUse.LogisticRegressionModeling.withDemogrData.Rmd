@@ -166,8 +166,3 @@ print(odds_ratio_df)
 # Save the table to a CSV file
 write.csv(odds_ratio_df, "results/Table2.csv", row.names = FALSE)
 ```
-
-# Do a supplementary analysis of participants with substance data and demo data to control for confounding demo data
-
-```{r}
-```
