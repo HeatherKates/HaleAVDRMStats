@@ -7,6 +7,7 @@ output: html_document
   
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE,message = FALSE,warning = FALSE)
+knitr::opts_knit$set(root.dir = normalizePath(".."))
 ```
 
 ```{r,echo=FALSE}
@@ -16,7 +17,6 @@ library(logistf)
 library(ggplot2)
 library(tidyr)
 select <- dplyr::select
-setwd("../")
 ```
 
 ### The original dataset is used with no subsetting or re-coding
@@ -25,7 +25,7 @@ This data is cols AU:BB from sheet "Master Sheet" in https://www.dropbox.com/scl
 
 ```{r}
 # Read in the data
-data <- read.csv("original_data/Andrew_stats_MS.csv")
+data <- read.csv("original_data/Hale2023_originalData.csv")
 colnames(data) <- gsub("\\.","_",colnames(data))
 colnames(data) <- gsub("__","_",colnames(data))
 data <- na.omit(data)
@@ -33,7 +33,7 @@ data <- na.omit(data)
 data_factor <- data %>%
   mutate(across(c(AVDRM, Marijuana, Amphetamine, Cocaine, Sedatives, Opiates, Phencyclidine, Poly_Substance),
                 ~ factor(.x, levels = c(0, 1), labels = c(0, 1))))
-write.csv(data_factor,"data/TableS1.csv",row.names = FALSE)
+#write.csv(data_factor,"data/TableS1.csv",row.names = FALSE)
 ```
 
 ### Build and test all possible models and compare model fit values (AIC) to see which model best fits the data and and whether the factors in that model are significant predictors of AVDRM
@@ -46,8 +46,8 @@ model_comparisons <- list()
 base_formula <- "AVDRM ~ Marijuana + Amphetamine + Cocaine + Sedatives + Opiates + Poly_Substance"
 
 # Define interaction terms for each substance with Poly_Substance
-interaction_terms <- c("Marijuana * Poly_Substance", "Amphetamine * Poly_Substance", "Cocaine * Poly_Substance", 
-                       "Sedatives * Poly_Substance", "Opiates * Poly_Substance")
+interaction_terms <- c("Marijuana:Poly_Substance", "Amphetamine : Poly_Substance", "Cocaine : Poly_Substance", 
+                       "Sedatives : Poly_Substance", "Opiates : Poly_Substance")
 
 # Function to fit the model and store AIC, BIC, significant factors, and their p-values
 fit_and_store_model <- function(formula_str, data) {
@@ -125,12 +125,10 @@ datatable(model_results_sorted,
             scrollX = TRUE
           )
 )
-write.csv(model_results_sorted,"results/TableS2.csv")
+#write.csv(model_results_sorted,"results/TableS2.csv")
 ```
 
 ### Get the odds ratio for the best model
-
-I'm not sure why marijuana * poly_substance has such a high odds ratio but I'll look into it - however, this isn't the significant term (marijuana is) so it should not matter.
 
 ```{r}
 best_model <- glm(AVDRM ~ Marijuana * Poly_Substance + Amphetamine + Cocaine + Sedatives + Opiates,
