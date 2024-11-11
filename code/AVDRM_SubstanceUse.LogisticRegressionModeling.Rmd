@@ -36,6 +36,13 @@ data_factor <- data %>%
 #write.csv(data_factor,"data/TableS1.csv",row.names = FALSE)
 ```
 
+Read in demographic data and merge with data
+
+```{r}
+demo_data <- read.csv("original_data/Demographic_data.csv")
+data <- merge(data,demo_data,by="PATID")
+```
+
 ### Build and test all possible models and compare model fit values (AIC) to see which model best fits the data and and whether the factors in that model are significant predictors of AVDRM
 
 ```{r}
@@ -50,8 +57,8 @@ interaction_terms <- c("Marijuana:Poly_Substance", "Amphetamine : Poly_Substance
                        "Sedatives : Poly_Substance", "Opiates : Poly_Substance")
 
 # Function to fit the model and store AIC, BIC, significant factors, and their p-values
-fit_and_store_model <- function(formula_str, data) {
-  model <- glm(as.formula(formula_str), family = binomial(link = "logit"), data = data)
+fit_and_store_model <- function(formula_str, data_factor) {
+  model <- glm(as.formula(formula_str), family = binomial(link = "logit"), data = data_factor)
   aic <- AIC(model)
   bic <- BIC(model)
   
