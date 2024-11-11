@@ -37,10 +37,11 @@ data_factor <- data %>%
 ```
 
 Read in demographic data and merge with data
+This data is cols B:O from sheet "Master Sheet" in https://www.dropbox.com/scl/fi/j37pkkg8624byolqf3aim/MPH-Dataset-Stata.xlsx?rlkey=hdsylsmkursvzazd7a8yc9tk7&st=n00hxd0w&dl=0
 
 ```{r}
 demo_data <- read.csv("original_data/Demographic_data.csv")
-data <- merge(data,demo_data,by="PATID")
+data_factor_demo <- merge(data_factor,demo_data,by="PATID")
 ```
 
 ### Build and test all possible models and compare model fit values (AIC) to see which model best fits the data and and whether the factors in that model are significant predictors of AVDRM
