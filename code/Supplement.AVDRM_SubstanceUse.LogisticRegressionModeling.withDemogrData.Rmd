@@ -40,107 +40,404 @@ Read in demographic data and merge with data
 This data is cols B:O from sheet "Master Sheet" in https://www.dropbox.com/scl/fi/j37pkkg8624byolqf3aim/MPH-Dataset-Stata.xlsx?rlkey=hdsylsmkursvzazd7a8yc9tk7&st=n00hxd0w&dl=0
 
 ```{r}
-demo_data <- read.csv("original_data/Demographic_data.csv")
-data_factor_demo <- merge(data_factor,demo_data,by="PATID")
+master_data <- read.csv("original_data/Hale2023_MasterData.csv")
+master_data$Cannabis <- as.factor(master_data$Cannabis)
+#omit participants without urinalysis results
+master_data <- master_data %>% filter(!is.na(Cannabis))
+master_data <- master_data %>% select_if(~!all(is.na(.)))
 ```
 
-### Build and test all possible models and compare model fit values (AIC) to see which model best fits the data and and whether the factors in that model are significant predictors of ARVDRM
+# Create a single race variable
 
 ```{r}
-# Create a list to store the models and their AIC/BIC values along with significant factors and p-values
-model_comparisons <- list()
+# Create a new "Race" variable based on the binary race columns
+master_data$Race <- ifelse(master_data$MultiRacial == 1, "MultiRacial",
+                                ifelse(master_data$Asian == 1, "Asian",
+                                ifelse(master_data$Black == 1, "Black",
+                                ifelse(master_data$Native_American == 1, "Native_American",
+                                ifelse(master_data$Native_Hawaiin == 1, "Native_Hawaiin",
+                                ifelse(master_data$White == 1, "White", "Unknown"))))))
 
-# Define the base formula for the model without interactions
-base_formula <- "ARVDRM ~ Cannabis + Amphetamine + Cocaine + Sedatives + Opiates + Poly_Substance"
-
-# Define interaction terms for each substance with Poly_Substance
-interaction_terms <- c("Cannabis:Poly_Substance", "Amphetamine : Poly_Substance", "Cocaine : Poly_Substance", 
-                       "Sedatives : Poly_Substance", "Opiates : Poly_Substance")
-
-# Function to fit the model and store AIC, BIC, significant factors, and their p-values
-fit_and_store_model <- function(formula_str, data_factor) {
-  model <- glm(as.formula(formula_str), family = binomial(link = "logit"), data = data_factor)
-  aic <- AIC(model)
-  bic <- BIC(model)
-  
-  # Extract p-values and significant factors
-  summary_model <- summary(model)
-  p_values <- coef(summary_model)[, "Pr(>|z|)"]
-  
-  # Remove the intercept from significant factors
-  significant_factors <- names(p_values)[p_values < 0.05 & names(p_values) != "(Intercept)"]
-  significant_pvals <- p_values[p_values < 0.05 & names(p_values) != "(Intercept)"]
-  
-  return(list(formula = formula_str, AIC = aic, BIC = bic, significant_factors = significant_factors, 
-              p_values = significant_pvals, model = model))
-}
-
-# Create a list to store the models and their AIC/BIC values along with significant factors and p-values
-model_comparisons <- list()
-
-# Fit the base model (without any interactions)
-base_model <- fit_and_store_model(base_formula, data_factor)
-model_comparisons[["Base Model (No Interactions)"]] <- base_model
-
-# Fit models with each individual interaction term
-for (interaction in interaction_terms) {
-  formula_with_interaction <- paste(base_formula, "+", interaction)
-  model_name <- paste("Model with", interaction)
-  model_comparisons[[model_name]] <- fit_and_store_model(formula_with_interaction, data_factor)
-}
-
-# Fit a model with all interactions
-all_interactions_formula <- paste(base_formula, "+", paste(interaction_terms, collapse = " + "))
-model_comparisons[["All Interactions"]] <- fit_and_store_model(all_interactions_formula, data_factor)
-
-# Create a data frame to store AIC, BIC, significant factors, and p-values for all models
-model_results <- data.frame(
-  Model = names(model_comparisons),
-  AIC = sapply(model_comparisons, function(x) x$AIC),
-  BIC = sapply(model_comparisons, function(x) x$BIC),
-  Significant_Factors = sapply(model_comparisons, function(x) ifelse(length(x$significant_factors) == 0, 
-                                                                     "None", 
-                                                                     paste(x$significant_factors, collapse = ", "))),
-  P_Values = sapply(model_comparisons, function(x) ifelse(length(x$p_values) == 0, 
-                                                          "None", 
-                                                          paste(round(x$p_values, 5), collapse = ", ")))
-)
+# Convert "Race" to a factor
+master_data$Race <- as.factor(master_data$Race)
 ```
 
-```{r,echo=FALSE}
-# sort by AIC to see the best models
-model_results_sorted <- model_results[order(model_results$AIC), ]
+# Summary of the data
 
-# Change "Significant_Factors" and "P_Values" to character strings
-model_results_sorted$Significant_Factors <- as.character(model_results_sorted$Significant_Factors)
-model_results_sorted$P_Values <- as.character(model_results_sorted$P_Values)
+```{r}
+# Load necessary library
+library(dplyr)
+
+# Function to summarize only binary variables in the data frame
+summarize_binary_variables <- function(data) {
+  # Remove columns that are entirely NA
+  data <- data %>% select_if(~!all(is.na(.)))
+
+  # Initialize an empty data frame for the summary
+  summary_data <- data.frame(Variable = character(),
+                             Level = character(),
+                             n = numeric(),
+                             Percentage = numeric(),
+                             stringsAsFactors = FALSE)
+
+  # Loop through each column to check if it's binary
+  for (var in names(data)) {
+    unique_vals <- unique(na.omit(data[[var]]))
+    
+    # Check if the variable is binary (only two unique values, e.g., 0 and 1)
+    if (length(unique_vals) == 2) {
+      for (level in unique_vals) {
+        count <- sum(data[[var]] == level, na.rm = TRUE)
+        total <- sum(!is.na(data[[var]]))
+        percentage <- round((count / total) * 100, 2)
+        summary_data <- rbind(summary_data, data.frame(Variable = var, Level = as.character(level), n = count, Percentage = percentage))
+      }
+    }
+  }
+
+  return(summary_data)
+}
+
+# Use the function on your data frame
+summary_result <- summarize_binary_variables(master_data)
+
+# Print the summary result
+print(summary_result)
+master_data_restore <- master_data
+
 ```
 
-```{r,echo=FALSE}
-library(DT)
-# Adjust column widths
-datatable(model_results_sorted, 
-          rownames = FALSE, 
-          colnames = c("Model", "AIC", "BIC", "Significant Factors", "P-Values"),
-          options = list(
-            autoWidth = TRUE,
-            columnDefs = list(
-              list(width = '200px', targets = 0),  # Adjust width for 'Model'
-              list(width = '100px', targets = c(1, 2)),  # AIC, BIC widths
-              list(width = '150px', targets = 3),  # Significant Factors width
-              list(width = '100px', targets = 4)  # P-Values width
-            ),
-            scrollX = TRUE
-          )
+# Visualize data faceted by ARV-DRM
+
+```{r}
+# Load required libraries
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+
+# Rename and recode variables as needed
+master_data <- master_data %>%
+  dplyr::rename(Sex = Gender) %>%
+  mutate(Race = dplyr::recode(Race,Native_American="Native\nAmerican")) %>%
+  mutate(Race = dplyr::recode(Race,MultiRacial="Multi-\nracial")) %>%
+  mutate(
+    Sex = dplyr::recode(Sex, `2` = "Male", `1` = "Female"),
+    Cannabis = factor(Cannabis, levels = c(0, 1), labels = c("Negative", "Positive")),
+    Amphetamine = factor(Amphetamine, levels = c(0, 1), labels = c("Negative", "Positive")),
+    Cocaine = factor(Cocaine, levels = c(0, 1), labels = c("Negative", "Positive")),
+    Sedatives = factor(Sedatives, levels = c(0, 1), labels = c("Negative", "Positive")),
+    Opiates = factor(Opiates, levels = c(0, 1), labels = c("Negative", "Positive")),
+    Phencyclidine = factor(Phencyclidine, levels = c(0, 1), labels = c("Negative", "Positive")),
+    PolySubstance = factor(PolySubstance, levels = c(0, 1), labels = c("Negative", "Positive")),
+    CSF_Escape = factor(CSF_Escape, levels = c(0, 1), labels = c("Negative", "Positive")),
+    ARV.DRM = factor(ARV.DRM, levels = c(0, 1), labels = c("Absent", "Present")),
+    Sex = factor(Sex, levels = c("Female", "Male"))
+  )
+
+# Load tidyr for complete() function
+library(tidyr)
+# Function to create donut charts with n values embedded in labels and slice labels
+create_donut_chart_with_labels <- function(var) {
+  # Calculate n values and update levels to include n
+  df <- master_data %>%
+    group_by(.data[[var]]) %>%
+    mutate(
+      !!var := paste0(.data[[var]], " (n = ", n(), ")")
+    ) %>%
+    ungroup() %>%
+    group_by(.data[[var]], ARV.DRM) %>%
+    summarise(Count = n(), .groups = 'drop') %>%
+    group_by(.data[[var]]) %>%
+    mutate(Percentage = Count / sum(Count) * 100,
+           Label = paste0("n = ", Count))  # Create labels for the slices
+  
+  # Determine the title text based on the variable
+  title_text <- if (var %in% c("Sex", "CSF_Escape")) {
+    paste("ARV.DRM status within", var)
+  } else {
+    paste("ARV.DRM status within", var, "use")
+  }
+  
+  # Generate the donut chart
+  ggplot(df, aes(x = 2, y = Percentage, fill = ARV.DRM)) +
+    geom_bar(stat = "identity", width = 1) +
+    coord_polar(theta = "y") +
+    xlim(0.5, 2.5) +  # Creates the hollow center for the donut chart
+    scale_fill_manual(values = c("Absent" = "blue", "Present" = "orange")) +
+    facet_wrap(~ .data[[var]]) +
+    # Add slice labels using geom_text
+    # Use geom_label to add a white box around the text
+    geom_label(aes(x=1.5,label = Label), position = position_stack(vjust = 0.8), size = 2, fill = "white",hjust=0) +
+    labs(
+      title = title_text,
+      x = NULL, y = NULL
+    ) +
+    theme_void() +
+    theme(
+      plot.title = element_text(size = 10),
+      legend.position = "right"
+    )
+}
+
+# List of binary variables
+binary_variables <- c("Sex", "Cannabis", "Amphetamine", "Cocaine", "Sedatives", "Opiates", "Phencyclidine", "PolySubstance", "CSF_Escape")
+# Generate donut charts for all binary variables
+donut_charts_by_arv <- lapply(binary_variables, create_donut_chart_with_labels)
+
+# Combine all pie charts in a grid
+pie_charts_grid <- wrap_plots(donut_charts_by_arv, ncol = 3)
+
+# Create histograms for continuous variables
+hist_age <- ggplot(master_data, aes(x = Age_Enrollment, fill = ARV.DRM)) +
+  geom_histogram(binwidth = 2, color = "black", alpha = 0.7) +
+  facet_wrap(~ ARV.DRM) +
+  scale_fill_manual(values = c("Absent" = "blue", "Present" = "orange"))+
+  labs(title = "Age at Enrollment by ARV.DRM Status", x = "Age", y = "Count") +
+  theme_minimal()+
+    theme(plot.title = element_text(size = 10),
+    axis.text.x = element_text(angle = 90, hjust = 1),axis.title.x = element_text(size = 8),
+    plot.margin = margin(10, 5, 10, 10)) # Decrease right margin)
+
+hist_hiv_diagnosis <- ggplot(master_data, aes(x = Year_of_HIV_Diagnosis, fill = ARV.DRM)) +
+  geom_histogram(binwidth = 2, color = "black", alpha = 0.7) +
+  facet_wrap(~ ARV.DRM) +
+  scale_fill_manual(values = c("Absent" = "blue", "Present" = "orange"))+
+  labs(title = "Year of HIV Diagnosis by ARV.DRM Status (n=207)", x = "Year of HIV Diagnosis", y = "Count") +
+  theme_minimal()+
+    theme(plot.title = element_text(size = 10),
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    axis.title.x = element_text(size = 8))  # Rotate labels
+
+hist_infection_length <- ggplot(master_data, aes(x = Length_of_Infection, fill = ARV.DRM)) +
+  geom_histogram(binwidth = 1, color = "black", alpha = 0.7) +
+  facet_wrap(~ ARV.DRM) +
+  scale_fill_manual(values = c("Absent" = "blue", "Present" = "orange"))+
+  labs(title = "Length of Infection by ARV.DRM Status (n=207)", x = "Length of Infection (years)", y = "Count") +
+  theme_minimal()+
+    theme(plot.title = element_text(size = 10),
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    axis.title.x = element_text(size = 8))
+
+# Function to create a donut chart with n values and labeled segments for Race
+create_race_donut_chart <- function() {
+  # Calculate counts, percentages, and update Race levels to include n
+  df <- master_data %>%
+    group_by(Race) %>%
+    mutate(Race = paste0(Race, " (n = ", n(), ")")) %>%
+    ungroup() %>%
+    group_by(Race, ARV.DRM) %>%
+    summarise(Count = n(), .groups = 'drop') %>%
+    group_by(Race) %>%
+    mutate(
+      Percentage = Count / sum(Count) * 100,
+      Label = paste0("n = ", Count)  # Create labels for each segment
+    )
+
+  # Generate the donut chart
+  ggplot(df, aes(x = 2, y = Percentage, fill = ARV.DRM)) +
+    geom_bar(stat = "identity", width = 1) +
+    coord_polar(theta = "y") +
+    xlim(0.5, 2.5) +  # Creates the hollow center for the donut chart
+    scale_fill_manual(values = c("Absent" = "blue", "Present" = "orange")) +
+    facet_wrap(~ Race, nrow = 3, ncol = 2) +
+    # Use geom_label to add white boxes around text labels
+    geom_label(aes(label = Label), position = position_stack(vjust = 0.6), size = 2, fill = "white",hjust=-.3) +
+    labs(
+      title = "ARV.DRM status within Race",
+      x = NULL, y = NULL
+    ) +
+    theme_void() +
+    theme(
+      plot.title = element_text(size = 10),
+      legend.position = "bottom",
+      strip.text = element_text(size = 8),
+    plot.margin = margin(10, 20, 10, 20)
+    )
+}
+
+# Call the function to create the plot
+race_plot <- create_race_donut_chart()
+
+# Combine histograms into a single row
+histograms_row <- hist_hiv_diagnosis + hist_infection_length + hist_age + race_plot + plot_layout(ncol = 4,widths = c(1,1,1,1.5))
+
+# Combine all visualizations into one figure with adjusted heights
+combined_plot <- histograms_row / pie_charts_grid +
+  plot_layout(heights = c(1.5, 2)) +  # Adjust relative heights: 1 for histograms, 2 for pie charts
+  plot_annotation(title = "Visual Analysis of ARV.DRM Status Across Variables")
+
+# Save the final combined plot
+ggsave("Final_Combined_ARV_DRM_Analysis_Updated.png", plot = combined_plot, width = 14, height = 10)
+
+master_data <- master_data_restore 
+```
+
+
+# Check for colinearity
+
+No evidence for colinearity between cannabis use and race
+
+```{r}
+table(master_data$Race, master_data$Cannabis)
+chisq.test(table(master_data$Race, master_data$Cannabis))
+fisher.test(table(master_data$Race, master_data$Cannabis))
+```
+
+# Check for colinearity with continuous variables
+
+No evidence for co linearity between age at enrollment, length of infection, and cannabis use
+
+```{r}
+# Convert Cannabis from factor to numeric
+master_data$Cannabis <- as.numeric(as.character(master_data$Cannabis))
+# Run the correlation test
+cor.test(master_data$Age_Enrollment, master_data$Cannabis)
+cor.test(master_data$Length_of_Infection,master_data$Cannabis)
+```
+
+# Check for multicolinearity in model
+
+No multicolinearity problems with demographic data, but we see the issue of colinearity between cannabis and poly_substance use
+
+```{r}
+library(car)
+model_with_demo <- glm(AVDRM ~ Cannabis * PolySubstance + Amphetamine + Cocaine + Sedatives + Opiates + 
+                       Race + Age_Enrollment,
+                       data = master_data)
+vif(model_with_demo)
+```
+
+# Stratify by poly substance use to address multicolinearity of cannabis and poly substance use
+
+There aren't enough data points in the non poly substance use group to draw a conclusion from this approach (only 1 ARVDRM+/Cannabis+ data point in non poly substance use subset)
+
+```{r}
+# Subset data for non-poly_substance users
+data_non_poly <- subset(data_factor, Poly_Substance == 0)
+model_non_poly <- logistf(ARVDRM ~ Cannabis + Amphetamine + Cocaine + Sedatives + Opiates,
+                      data = data_non_poly)
+
+# Subset data for poly_substance users
+data_poly <- subset(data_factor, Poly_Substance == 1)
+model_poly <- logistf(ARVDRM ~ Cannabis + Amphetamine + Cocaine + Sedatives + Opiates,
+                  data = data_poly)
+```
+
+```{r}
+# Update values in data_poly
+data_poly$Cannabis <- ifelse(data_poly$Cannabis == 1, "cannabis_pos (1)", "cannabis_neg (0)")
+data_poly$ARVDRM <- ifelse(data_poly$ARVDRM == 1, "ARVDRM_pos (1)", "ARVDRM_neg (0)")
+
+# Update values in data_non_poly
+data_non_poly$Cannabis <- ifelse(data_non_poly$Cannabis == 1, "cannabis_pos (1)", "cannabis_neg (0)")
+data_non_poly$ARVDRM <- ifelse(data_non_poly$ARVDRM == 1, "ARVDRM_pos (1)", "ARVDRM_neg (0)")
+```
+
+```{r}
+library(ggplot2)
+library(gridExtra)
+library(grid)
+library(gtable)
+# Get the summaries of both models
+summary_poly <- summary(model_poly)
+summary_non_poly <- summary(model_non_poly)
+
+# Extract Cannabis coefficient and p-value from summary_poly
+# Coefficients and p-values are stored as named numeric vectors
+coef_poly <- summary_poly$coefficients["Cannabis1"]
+p_value_poly <- summary_poly$prob["Cannabis1"]
+
+# Extract Cannabis coefficient and p-value from summary_non_poly
+coef_non_poly <- summary_non_poly$coefficients["Cannabis1"]
+p_value_non_poly <- summary_non_poly$prob["Cannabis1"]
+
+# Format model formulas for display
+formula_poly <- deparse(model_poly$call)
+formula_non_poly <- deparse(model_non_poly$call)
+
+# Format model summaries as text
+model_summary_poly <- paste0(
+  "Model (Poly): ", formula_poly, "\n",
+  "Cannabis Coefficient: ", round(coef_poly, 3), "\n",
+  "P-Value: ", round(p_value_poly, 5)
 )
-#write.csv(model_results_sorted,"results/TableS2.csv")
+
+model_summary_non_poly <- paste0(
+  "Model (Non-Poly): ", formula_non_poly, "\n",
+  "Cannabis Coefficient: ", round(coef_non_poly, 3), "\n",
+  "P-Value: ", round(p_value_non_poly, 5)
+)
+
+# Step 2: Create data tables for counts
+df_table_poly <- as.data.frame.matrix(table(data_poly$Cannabis, data_poly$ARVDRM))
+df_table_non_poly <- as.data.frame.matrix(table(data_non_poly$Cannabis, data_non_poly$ARVDRM))
+
+# Modify the formulas to include line breaks
+formula_poly <- "ARVDRM ~ Cannabis + Amphetamine\n+ Cocaine + Sedatives + Opiates"
+formula_non_poly <- "ARVDRM ~ Cannabis + Amphetamine\n+ Cocaine + Sedatives + Opiates"
+
+# Update the text for model summaries with the adjusted formulas
+model_summary_poly <- textGrob(
+  paste("Model (Poly):\n", formula_poly, "\n",
+        "Cannabis Coefficient:", round(coef_poly, 3), "\n",
+        "P-Value:", round(p_value_poly, 5)),
+  gp = gpar(fontsize = 10), just = "left"
+)
+
+model_summary_non_poly <- textGrob(
+  paste("Model (Non-Poly):\n", formula_non_poly, "\n",
+        "Cannabis Coefficient:", round(coef_non_poly, 3), "\n",
+        "P-Value:", round(p_value_non_poly, 5)),
+  gp = gpar(fontsize = 10), just = "left"
+)
+
+
+
+# Step 4: Create bar plots
+plot_poly <- ggplot(as.data.frame(table(data_poly$Cannabis, data_poly$ARVDRM)), 
+                    aes(x = Var1, y = Freq, fill = as.factor(Var2))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Distribution in Poly-Substance Users",
+       x = "Cannabis Status", y = "Count", fill = "ARVDRM") +
+  theme_minimal()
+
+plot_non_poly <- ggplot(as.data.frame(table(data_non_poly$Cannabis, data_non_poly$ARVDRM)), 
+                        aes(x = Var1, y = Freq, fill = as.factor(Var2))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Distribution in Non Poly-Substance Users",
+       x = "Cannabis Status", y = "Count", fill = "ARVDRM") +
+  theme_minimal()
+
+# Create the final plot
+final_plot <- grid.arrange(
+  arrangeGrob(tableGrob(df_table_poly), model_summary_poly, ncol = 1),
+  plot_poly,
+  arrangeGrob(tableGrob(df_table_non_poly), model_summary_non_poly, ncol = 1),
+  plot_non_poly,
+  ncol = 2,
+  top = "Summary of Cannabis and ARV-DRM by Poly-Substance Use Status"
+)
+
+final_plot
+```
+
+### Include demographic covariates in best model
+
+```{r}
+# Recode Race to be "White" or "Non-White"
+data_factor_demo$Race <- ifelse(data_factor_demo$Race == "White", "White", "Non-White")
+
+# Convert Race to a factor
+data_factor_demo$Race <- as.factor(data_factor_demo$Race)
 ```
 
 ### Get the odds ratio for the best model
 
 ```{r}
-best_model <- glm(ARVDRM ~ Cannabis * Poly_Substance + Amphetamine + Cocaine + Sedatives + Opiates,
-                  data = data_factor, family = binomial())
+data_factor_
+best_model <- glm(ARVDRM ~ Cannabis +  Poly_Substance + Amphetamine + Cocaine + Sedatives + Opiates +
+                  Race + Length_of_Infection + Age_Enrollment,
+                  data = data_factor_demo, family = binomial())
 
 # Calculate odds ratios and confidence intervals
 best_model_coefs <- coef(best_model)
@@ -164,5 +461,42 @@ odds_ratio_df <- data.frame(
 print(odds_ratio_df)
 
 # Save the table to a CSV file
-write.csv(odds_ratio_df, "results/Table2.csv", row.names = FALSE)
+write.csv(odds_ratio_df, "results/suppl.Table.csv", row.names = FALSE)
+```
+
+See if using firth logistic regression for rare events changes results of best model
+
+```{r}
+# Load the logistf package
+library(logistf)
+
+# Perform Firth logistic regression
+firth_model <- logistf(ARVDRM ~ Cannabis * Poly_Substance + Amphetamine + Cocaine + Sedatives + Opiates,
+                  data = data_factor)
+
+# Summarize the results
+summary(firth_model)
+```
+
+```{r}
+# Calculate odds ratios and confidence intervals
+best_model_or <- exp(coef(firth_model))  # Odds ratios
+conf_int <- exp(confint(firth_model))    # Confidence intervals
+
+# Extract p-values from the model summary
+best_model_summary <- summary(firth_model)
+p_values <- best_model_summary$prob  # Extract p-values from the summary
+
+# Combine odds ratios, confidence intervals, and p-values into a data frame
+odds_ratio_df <- data.frame(
+  Predictor = names(best_model_or),
+  Odds_Ratio = round(best_model_or, 3),
+  CI_95_Lower = round(conf_int[, 1], 3),
+  CI_95_Upper = round(conf_int[, 2], 3),
+  P_Value = round(p_values, 5)
+)
+
+# View the table with odds ratios, confidence intervals, and p-values
+print(odds_ratio_df)
+
 ```
