@@ -1,0 +1,1076 @@
+---
+title: "Analysis of interaction between specific substance use and poly substance use"
+author: "Heather Kates"
+date: "2024-09-20"
+output: html_document
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,message = FALSE,warning = FALSE)
+knitr::opts_knit$set(root.dir = normalizePath(".."))
+```
+
+```{r,echo=FALSE}
+#Load required libraries
+library(dplyr)
+library(logistf)
+library(ggplot2)
+library(tidyr)
+
+# Load the DT package
+library(DT)
+select <- dplyr::select
+
+#Function
+# Load necessary library
+library(dplyr)
+
+# Define the function
+logistf_tablize <- function(model_summary) {
+  # Create a data frame for reporting
+  report_df <- data.frame(
+    Variable = names(model_summary$coefficients)[-1],  # Remove the intercept
+    P_Value = model_summary$prob[-1],  # P-values (excluding intercept)
+    Odds_Ratio = exp(model_summary$coefficients[-1]),  # Odds Ratios
+    CI_Lower = exp(model_summary$ci.lower[-1]),  # Lower bound of 95% CI
+    CI_Upper = exp(model_summary$ci.upper[-1])   # Upper bound of 95% CI
+  )
+  
+  # Round values for clarity
+  report_df <- report_df %>%
+    mutate(
+      P_Value = round(P_Value, 4),
+      Odds_Ratio = round(Odds_Ratio, 2),
+      CI_Lower = round(CI_Lower, 2),
+      CI_Upper = round(CI_Upper, 2)
+    )
+  
+  return(report_df)
+}
+```
+
+# Methods
+
+## Participants
+
+We obtained data through the National NeuroAIDS Tissue Consortium (NNTC) Data Coordinating Center, which included data from the NNTC and Central Nervous System HIV Anti-Retroviral Therapy Effects Research (CHARTER) between January 2005 and September 2016. The criteria for participant inclusion and data collection for individual cohorts have been previously described in published manuscripts (17-19). From these cohorts, Mukerji et al. (4) then compiled participants into a cohort to analyze for resistance mutations (4). Eligibility criteria for the current study included: HIV+ status, at least one paired plasma and cerebrospinal fluid viral load measurement, at least one urinalysis of substance use, and at least 18 years of age. 
+
+## Outcome of Interest
+
+The outcome of interest was the presence of an anti-retroviral drug-resistance mutation (ARV-DRM), which was scored as positive if participants had a mutation in either the cerebrospinal fluid or plasma for either protease inhibitors (PI) or nucleoside reverse transcriptase inhibitors/ non-nucleoside reverse transcriptase inhibitors (NRTI/ NNRTI) as determined by lab tested plasma and cerebrospinal fluid for for HIV ARV-DRM and viral levels.
+
+## Predictors of Interest
+
+**Substance use**. The substances included in our analyses were: cannabis, amphetamine, cocaine, sedatives, and opiates. Substance use status was determined by aggregated urinalysis data that were collected multiple times during the duration of a study participant’s enrollment. The urinalysis data were aggregated such that if a participant screened positive for a substance during their duration in the study, they were scored positive for that substance. If they never screened positive for that substance, they were considered negative. This was performed to reduce potential bias due to inconsistent numbers of visits across participants. Some substance categories in the urinalysis were combined due to the similarity of the substances (e.g. amphetamines and methamphetamine; opioids, oxycodone, buprenorphine, and methadone) with respect to their actions on the central nervous system (20). Participants that screened positive for two or more substances were scored as positive for polysubstance use.
+
+**Other Variables Considered**
+We captured and considered the relationship between non-substance use factors on substance use or on the outcome variable. These included sociodemographic characteristics (age at survey enrollment, race/ethnicity, and sex) and study-related characteristics (length of Infection).
+
+This data is cols B:O and AU:BB from sheet "Master Sheet" in https://www.dropbox.com/scl/fi/j37pkkg8624byolqf3aim/MPH-Dataset-Stata.xlsx?rlkey=hdsylsmkursvzazd7a8yc9tk7&st=n00hxd0w&dl=0
+
+```{r}
+data <- read.csv("original_data/Hale2023_MasterData.csv")
+#omit participants without urinalysis results
+data <- data %>% filter(!is.na(Cannabis))
+data <- data %>% select_if(~!all(is.na(.)))
+```
+
+```{r}
+# Create a categorical "Race" variable based on the binary race columns
+data$Race <- ifelse(data$MultiRacial == 1, "MultiRacial",
+                                ifelse(data$Asian == 1, "Asian",
+                                ifelse(data$Black == 1, "Black",
+                                ifelse(data$Hispanic == 1, "Hispanic",
+                                ifelse(data$Native_American == 1, "Native_American",
+                                ifelse(data$Native_Hawaiin == 1, "Native_Hawaiin",
+                                ifelse(data$White == 1, "White", "Unknown")))))))
+
+# Convert "Race" to a factor
+data$Race <- as.factor(data$Race)
+```
+
+```{r}
+#Rename gender to sex
+data <- data %>% dplyr::rename("Sex"="Gender")
+# Convert binary variables to factors explicitly
+data <- data %>%
+  mutate(across(
+    c(ARV.DRM, Cannabis, Amphetamine, Cocaine, Sedatives, Opiates, PolySubstance),
+    ~ factor(.x, levels = c(0, 1), labels = c("Negative", "Positive"))
+  ))
+data$Sex <- factor(data$Sex, levels = c(1, 2), labels = c("Female", "Male"))
+#write.csv(data_factor,"data/TableS1.csv",row.names = FALSE)
+```
+
+#Create Table 1
+
+```{r}
+library(dplyr)
+
+# Calculate total sample size
+total_n <- nrow(data)
+
+# Calculate total counts for each ARV-DRM group
+total_positive <- nrow(filter(data, ARV.DRM == "Positive"))
+total_negative <- nrow(filter(data, ARV.DRM == "Negative"))
+
+# Helper function to calculate n and percent for a given filter
+calc_n_and_percent <- function(subset_data, total) {
+  n <- nrow(subset_data)
+  percent <- (n / total) * 100
+  return(list(n = n, percent = percent))
+}
+
+# Create a list to store results for each characteristic
+results <- list()
+
+# Calculate n and percent for Sex (Total, ARV-DRM Positive, ARV-DRM Negative)
+results$Sex_Female_Total <- calc_n_and_percent(filter(data, Sex == "Female"), total_n)
+results$Sex_Female_Pos <- calc_n_and_percent(filter(data, Sex == "Female" & ARV.DRM == "Positive"), total_positive)
+results$Sex_Female_Neg <- calc_n_and_percent(filter(data, Sex == "Female" & ARV.DRM == "Negative"), total_negative)
+results$Sex_Male_Total <- calc_n_and_percent(filter(data, Sex == "Male"), total_n)
+results$Sex_Male_Pos <- calc_n_and_percent(filter(data, Sex == "Male" & ARV.DRM == "Positive"), total_positive)
+results$Sex_Male_Neg <- calc_n_and_percent(filter(data, Sex == "Male" & ARV.DRM == "Negative"), total_negative)
+
+# Calculate n and percent for Race/Ethnicity (Total, ARV-DRM Positive, ARV-DRM Negative)
+results$Race_White_Total <- calc_n_and_percent(filter(data, Race == "White"), total_n)
+results$Race_White_Pos <- calc_n_and_percent(filter(data, Race == "White" & ARV.DRM == "Positive"), total_positive)
+results$Race_White_Neg <- calc_n_and_percent(filter(data, Race == "White" & ARV.DRM == "Negative"), total_negative)
+results$Race_Asian_Total <- calc_n_and_percent(filter(data, Race == "Asian"), total_n)
+results$Race_Asian_Pos <- calc_n_and_percent(filter(data, Race == "Asian" & ARV.DRM == "Positive"), total_positive)
+results$Race_Asian_Neg <- calc_n_and_percent(filter(data, Race == "Asian" & ARV.DRM == "Negative"), total_negative)
+results$Race_Black_Total <- calc_n_and_percent(filter(data, Race == "Black"), total_n)
+results$Race_Black_Pos <- calc_n_and_percent(filter(data, Race == "Black" & ARV.DRM == "Positive"), total_positive)
+results$Race_Black_Neg <- calc_n_and_percent(filter(data, Race == "Black" & ARV.DRM == "Negative"), total_negative)
+results$Race_Hispanic_Total <- calc_n_and_percent(filter(data, Race == "Hispanic"), total_n)
+results$Race_Hispanic_Pos <- calc_n_and_percent(filter(data, Race == "Hispanic" & ARV.DRM == "Positive"), total_positive)
+results$Race_Hispanic_Neg <- calc_n_and_percent(filter(data, Race == "Hispanic" & ARV.DRM == "Negative"), total_negative)
+results$Race_MultiRacial_Total <- calc_n_and_percent(filter(data, Race == "MultiRacial"), total_n)
+results$Race_MultiRacial_Pos <- calc_n_and_percent(filter(data, Race == "MultiRacial" & ARV.DRM == "Positive"), total_positive)
+results$Race_MultiRacial_Neg <- calc_n_and_percent(filter(data, Race == "MultiRacial" & ARV.DRM == "Negative"), total_negative)
+results$Race_NativeAmerican_Total <- calc_n_and_percent(filter(data, Race == "Native_American"), total_n)
+results$Race_NativeAmerican_Pos <- calc_n_and_percent(filter(data, Race == "Native_American" & ARV.DRM == "Positive"), total_positive)
+results$Race_NativeAmerican_Neg <- calc_n_and_percent(filter(data, Race == "Native_American" & ARV.DRM == "Negative"), total_negative)
+results$Race_Unknown_Total <- calc_n_and_percent(filter(data, Race == "Unknown"), total_n)
+results$Race_Unknown_Pos <- calc_n_and_percent(filter(data, Race == "Unknown" & ARV.DRM == "Positive"), total_positive)
+results$Race_Unknown_Neg <- calc_n_and_percent(filter(data, Race == "Unknown" & ARV.DRM == "Negative"), total_negative)
+
+# Calculate n and percent for Substance Use (Total, ARV-DRM Positive, ARV-DRM Negative)
+results$Substance_Cannabis_Total <- calc_n_and_percent(filter(data, Cannabis == "Positive"), total_n)
+results$Substance_Cannabis_Pos <- calc_n_and_percent(filter(data, Cannabis == "Positive" & ARV.DRM == "Positive"), total_positive)
+results$Substance_Cannabis_Neg <- calc_n_and_percent(filter(data, Cannabis == "Positive" & ARV.DRM == "Negative"), total_negative)
+results$Substance_Cocaine_Total <- calc_n_and_percent(filter(data, Cocaine == "Positive"), total_n)
+results$Substance_Cocaine_Pos <- calc_n_and_percent(filter(data, Cocaine == "Positive" & ARV.DRM == "Positive"), total_positive)
+results$Substance_Cocaine_Neg <- calc_n_and_percent(filter(data, Cocaine == "Positive" & ARV.DRM == "Negative"), total_negative)
+results$Substance_Amphetamines_Total <- calc_n_and_percent(filter(data, Amphetamine == "Positive"), total_n)
+results$Substance_Amphetamines_Pos <- calc_n_and_percent(filter(data, Amphetamine == "Positive" & ARV.DRM == "Positive"), total_positive)
+results$Substance_Amphetamines_Neg <- calc_n_and_percent(filter(data, Amphetamine == "Positive" & ARV.DRM == "Negative"), total_negative)
+results$Substance_Opiates_Total <- calc_n_and_percent(filter(data, Opiates == "Positive"), total_n)
+results$Substance_Opiates_Pos <- calc_n_and_percent(filter(data, Opiates == "Positive" & ARV.DRM == "Positive"), total_positive)
+results$Substance_Opiates_Neg <- calc_n_and_percent(filter(data, Opiates == "Positive" & ARV.DRM == "Negative"), total_negative)
+results$Substance_Sedatives_Total <- calc_n_and_percent(filter(data, Sedatives == "Positive"), total_n)
+results$Substance_Sedatives_Pos <- calc_n_and_percent(filter(data, Sedatives == "Positive" & ARV.DRM == "Positive"), total_positive)
+results$Substance_Sedatives_Neg <- calc_n_and_percent(filter(data, Sedatives == "Positive" & ARV.DRM == "Negative"), total_negative)
+results$Substance_PolySubstance_Total <- calc_n_and_percent(filter(data, PolySubstance == "Positive"), total_n)
+results$Substance_PolySubstance_Pos <- calc_n_and_percent(filter(data, PolySubstance == "Positive" & ARV.DRM == "Positive"), total_positive)
+results$Substance_PolySubstance_Neg <- calc_n_and_percent(filter(data, PolySubstance == "Positive" & ARV.DRM == "Negative"), total_negative)
+
+# Stratification of Cannabis Use by PolySubstance
+results$Cannabis_with_PolySubstance_Total <- calc_n_and_percent(filter(data, PolySubstance == "Positive" & Cannabis == "Positive"), total_n)
+results$Cannabis_with_PolySubstance_Pos <- calc_n_and_percent(filter(data, PolySubstance == "Positive" & Cannabis == "Positive" & ARV.DRM == "Positive"), total_positive)
+results$Cannabis_with_PolySubstance_Neg <- calc_n_and_percent(filter(data, PolySubstance == "Positive" & Cannabis == "Positive" & ARV.DRM == "Negative"), total_negative)
+results$Cannabis_without_PolySubstance_Total <- calc_n_and_percent(filter(data, PolySubstance == "Negative" & Cannabis == "Positive"), total_n)
+results$Cannabis_without_PolySubstance_Pos <- calc_n_and_percent(filter(data, PolySubstance == "Negative" & Cannabis == "Positive" & ARV.DRM == "Positive"), total_positive)
+results$Cannabis_without_PolySubstance_Neg <- calc_n_and_percent(filter(data, PolySubstance == "Negative" & Cannabis == "Positive" & ARV.DRM == "Negative"), total_negative)
+
+# Convert results into a data frame
+table_df <- data.frame(
+  Characteristic = c("Female", "Male", "White", "Asian", "Black","Hispanic", "Multi-Racial", "Native American", "Unknown",
+                     "Cannabis", "Cocaine", "Amphetamine", "Opiates", "Sedatives", "Poly-Substance",
+                     "Cannabis Use with PolySubstance", "Cannabis Use without PolySubstance"),
+  Total_n = sapply(results[c(TRUE, FALSE, FALSE)], function(x) x$n),
+  Total_Percent = sapply(results[c(TRUE, FALSE, FALSE)], function(x) x$percent),
+  ARV_DRM_Present_n = sapply(results[c(FALSE, TRUE, FALSE)], function(x) x$n),
+  ARV_DRM_Present_Percent = sapply(results[c(FALSE, TRUE, FALSE)], function(x) x$percent),
+  ARV_DRM_Absent_n = sapply(results[c(FALSE, FALSE, TRUE)], function(x) x$n),
+  ARV_DRM_Absent_Percent = sapply(results[c(FALSE, FALSE, TRUE)], function(x) x$percent)
+)
+
+
+ # Calculate n and percent for Cannabis Use stratified by PolySubstance and No PolySubstance
+Cannabis_PolySubstance_Total <- calc_n_and_percent(filter(data, Cannabis == "Positive" & PolySubstance == "Positive"), total_n)
+Cannabis_PolySubstance_Pos <- calc_n_and_percent(filter(data, Cannabis == "Positive" & PolySubstance == "Positive" & ARV.DRM == "Positive"), total_positive)
+Cannabis_PolySubstance_Neg <- calc_n_and_percent(filter(data, Cannabis == "Positive" & PolySubstance == "Positive" & ARV.DRM == "Negative"), total_negative)
+
+Cannabis_NoPolySubstance_Total <- calc_n_and_percent(filter(data, Cannabis == "Positive" & PolySubstance == "Negative"), total_n)
+Cannabis_NoPolySubstance_Pos <- calc_n_and_percent(filter(data, Cannabis == "Positive" & PolySubstance == "Negative" & ARV.DRM == "Positive"), total_positive)
+Cannabis_NoPolySubstance_Neg <- calc_n_and_percent(filter(data, Cannabis == "Positive" & PolySubstance == "Negative" & ARV.DRM == "Negative"), total_negative)
+
+# Create a separate data frame
+cannabis_df <- data.frame(
+  Characteristic = c("Cannabis Use with Poly-Substance", "Cannabis Use without Poly-Substance"),
+  Total_n = c(Cannabis_PolySubstance_Total$n, Cannabis_NoPolySubstance_Total$n),
+  Total_Percent = c(Cannabis_PolySubstance_Total$percent, Cannabis_NoPolySubstance_Total$percent),
+  ARV_DRM_Present_n = c(Cannabis_PolySubstance_Pos$n, Cannabis_NoPolySubstance_Pos$n),
+  ARV_DRM_Present_Percent = c(Cannabis_PolySubstance_Pos$percent, Cannabis_NoPolySubstance_Pos$percent),
+  ARV_DRM_Absent_n = c(Cannabis_PolySubstance_Neg$n, Cannabis_NoPolySubstance_Neg$n),
+  ARV_DRM_Absent_Percent = c(Cannabis_PolySubstance_Neg$percent, Cannabis_NoPolySubstance_Neg$percent)
+)
+
+table_df <- rbind(table_df,cannabis_df)
+
+#no substance
+# Calculate n and percent for No Substance Use
+NoSubstance_Total <- calc_n_and_percent(filter(data, Num_of_Substances == 0), total_n)
+NoSubstance_Pos <- calc_n_and_percent(filter(data, Num_of_Substances == 0 & ARV.DRM == "Positive"), total_positive)
+NoSubstance_Neg <- calc_n_and_percent(filter(data, Num_of_Substances == 0 & ARV.DRM == "Negative"), total_negative)
+
+# Add the No Substance Use row to the separate data frame
+nosub_df <-   data.frame(
+    Characteristic = "No Substance Use",
+    Total_n = NoSubstance_Total$n,
+    Total_Percent = NoSubstance_Total$percent,
+    ARV_DRM_Present_n = NoSubstance_Pos$n,
+    ARV_DRM_Present_Percent = NoSubstance_Pos$percent,
+    ARV_DRM_Absent_n = NoSubstance_Neg$n,
+    ARV_DRM_Absent_Percent = NoSubstance_Neg$percent
+  )
+
+table_df <- rbind(table_df,nosub_df)
+#write.csv(table_df,"Table1.csv")
+```
+
+## Statistical Analyses
+
+Using Firth logistic regression analyses, we estimated the Odds Ratio (OR) as a measure of the association between substance use and ARV-DRM status. Firth regression was chosen to address the small number of ARV-DRM cases in certain subgroups. 
+
+### First, we tested univariable models for each predictor of interest (substance use) and each other variable considered.
+
+The results of fitting these model are in the p-value column of Table 1
+
+```{r}
+data <- data %>%
+  mutate(SubstanceUse = ifelse(Num_of_Substances > 0, "TRUE", "FALSE"))
+# Create variable of interest vector
+VOI <- c("Cannabis","PolySubstance","Amphetamine","Cocaine","Sedatives","Opiates", 
+"Race","Age_Enrollment","Sex","Year_of_HIV_Diagnosis","Length_of_Infection","SubstanceUse","IV_Drug_Use")
+
+#Relevel race because Asian is default ref and there is only one participant
+data$Race <- relevel(data$Race, ref = "White")
+```
+
+```{r}
+# Loop through each variable of interest
+# Initialize an empty data frame to store results
+univar_results_df <- data.frame()
+
+for (var in VOI) {
+  sink(tempfile())
+  # Fit the model using the updated data
+  invisible(firth_model <- logistf(as.formula(paste("ARV.DRM ~", var)), data = data))
+  
+  # Calculate odds ratios and confidence intervals
+  best_model_or <- exp(coef(firth_model))
+  conf_int <- exp(confint(firth_model))
+  
+  # Extract p-values from the model summary
+  best_model_summary <- summary(firth_model)
+  p_values <- best_model_summary$prob
+  
+  # Identify the reference level for categorical variables
+  ref_level <- if (is.factor(data[[var]])) {
+    levels(data[[var]])[1]  # The first level of the factor variable, used as the reference
+  } else {
+    NA  # For continuous variables, set reference level as NA
+  }
+  
+  # Combine odds ratios, confidence intervals, p-values, and reference level into a data frame
+  odds_ratio_df <- data.frame(
+    Variable = var,
+    Predictor = names(best_model_or),
+    Odds_Ratio = round(best_model_or, 3),
+    CI_95_Lower = round(conf_int[, 1], 3),
+    CI_95_Upper = round(conf_int[, 2], 3),
+    P_Value = round(p_values, 5),
+    Reference_Level = ref_level  # Include the reference level in the output
+  )
+  
+  # Append the results to the final data frame
+  univar_results_df <- rbind(univar_results_df, odds_ratio_df)
+  sink()
+}
+
+# Filter out rows where Predictor is "(Intercept)"
+univar_results_df <- univar_results_df[univar_results_df$Predictor != "(Intercept)", ]
+datatable(univar_results_df,rownames = FALSE,caption = "Results of all univariable models")
+```
+
+```{r}
+#Add univariable analysis of cannabis in data stratified by polysubstance use
+poly_data <- data %>% filter(PolySubstance == "Positive") # This compares poly users with cannabis to poly users without
+single_data <-  data %>% filter(PolySubstance == "Negative") #This includes cannabis only users to non drug users
+
+firth_model <- logistf(ARV.DRM ~ Cannabis, data = poly_data)  
+  # Calculate odds ratios and confidence intervals
+  best_model_or <- exp(coef(firth_model))
+  conf_int <- exp(confint(firth_model))
+  
+  # Extract p-values from the model summary
+  best_model_summary <- summary(firth_model)
+  p_values <- best_model_summary$prob
+  
+  # Identify the reference level for categorical variables
+  ref_level <- if (is.factor(data[[var]])) {
+    levels(data[[var]])[1]  # The first level of the factor variable, used as the reference
+  } else {
+    NA  # For continuous variables, set reference level as NA
+  }
+  
+  # Combine odds ratios, confidence intervals, p-values, and reference level into a data frame
+  odds_ratio_df <- data.frame(
+    Variable = var,
+    Predictor = names(best_model_or),
+    Odds_Ratio = round(best_model_or, 3),
+    CI_95_Lower = round(conf_int[, 1], 3),
+    CI_95_Upper = round(conf_int[, 2], 3),
+    P_Value = round(p_values, 5),
+    Reference_Level = ref_level  # Include the reference level in the output
+  )
+  odds_ratio_df$subset <- "polysubstance"
+  cannabis_subset_results_df <- odds_ratio_df
+  
+firth_model <- logistf(ARV.DRM ~ Cannabis, data = single_data)  
+  # Calculate odds ratios and confidence intervals
+  best_model_or <- exp(coef(firth_model))
+  conf_int <- exp(confint(firth_model))
+  
+  # Extract p-values from the model summary
+  best_model_summary <- summary(firth_model)
+  p_values <- best_model_summary$prob
+  
+  # Identify the reference level for categorical variables
+  ref_level <- if (is.factor(data[[var]])) {
+    levels(data[[var]])[1]  # The first level of the factor variable, used as the reference
+  } else {
+    NA  # For continuous variables, set reference level as NA
+  }
+  
+  # Combine odds ratios, confidence intervals, p-values, and reference level into a data frame
+  odds_ratio_df <- data.frame(
+    Variable = var,
+    Predictor = names(best_model_or),
+    Odds_Ratio = round(best_model_or, 3),
+    CI_95_Lower = round(conf_int[, 1], 3),
+    CI_95_Upper = round(conf_int[, 2], 3),
+    P_Value = round(p_values, 5),
+    Reference_Level = ref_level  # Include the reference level in the output
+  )
+  odds_ratio_df$subset <- "cannabis_only"
+  # Append the results to the final data frame
+  cannabis_subset_results_df <- rbind(cannabis_subset_results_df, odds_ratio_df)
+  cannabis_subset_results_df <- cannabis_subset_results_df[cannabis_subset_results_df$Predictor != "(Intercept)", ]
+write.csv(file="Cannabis_univariable_stratified_by_polysubstance.csv",univar_results_df)
+```
+
+```{r}
+#Add the univariable test results to Table 1 
+#Adding the cannabis stratified by polysubstance use was done manually using the result written above
+# Standardize names for matching
+clean_name <- function(x) {
+  x %>%
+    tolower() %>%
+    gsub("[[:space:]-]", "", .) %>% # Remove spaces, hyphens
+    gsub("positive", "", .) %>%     # Remove "Positive" suffix
+    gsub("use", "", .)  %>%            # Remove "Use" if applicable
+    gsub("race", "", .) %>%
+    gsub("sex", "", .) %>%
+    gsub("_", "", .) 
+    }
+
+# Clean both Characteristic and Predictor columns
+table_df <- table_df %>%
+  mutate(Cleaned_Characteristic = clean_name(Characteristic))
+
+univar_results_df <- univar_results_df %>%
+  mutate(Cleaned_Predictor = clean_name(Predictor))
+
+# Add the p-value column
+table_df <- table_df %>%
+  left_join(
+    univar_results_df %>% select(Cleaned_Predictor, P_Value),
+    by = c("Cleaned_Characteristic" = "Cleaned_Predictor")
+  ) %>%
+  select(-Cleaned_Characteristic) # Remove intermediate column if unnecessary
+
+# Add an asterisk for missing data
+variables_with_na <- names(data)[sapply(data, function(x) any(is.na(x)))]
+
+table_df <- table_df %>%
+  mutate(
+    Characteristic = ifelse(
+      gsub("[[:space:]-]", "", Characteristic) %in% clean_name(variables_with_na),
+      paste0(Characteristic, "*"),
+      Characteristic
+    )
+  )
+
+
+# 2. Add an asterisk to any value of Characteristic if it has missing data in `data`
+# Create a list of variables in data with missing values
+variables_with_na <- names(data)[sapply(data, function(x) any(is.na(x)))]
+
+# Add an asterisk to the Characteristic column in table_df if it matches any of the variables with missing data
+table_df <- table_df %>%
+  mutate(
+    Characteristic = ifelse(
+      gsub("_.*", "", Characteristic) %in% variables_with_na, 
+      paste0(Characteristic, "*"), 
+      Characteristic
+    )
+  )
+```
+
+### Second, we tested models including combinations of those predictors that were significant at the p < 0.20 level. 
+
+```{r}
+library(logistf)
+
+# Variables to consider for model combinations
+LowPVars <- c("Cannabis", "Length_of_Infection", "Sex", "Race","IV_Drug_Use")
+
+# Function to fit the model using Firth logistic regression and store results
+fit_and_store_model <- function(formula_str, data_factor) {
+  model <- logistf(as.formula(formula_str), data = data_factor)
+  
+  # Extract coefficients and p-values
+  coef_names <- names(model$coefficients)
+  coefficients <- model$coefficients
+  p_values <- model$prob
+  
+  # Remove the intercept from significant factors
+  significant_factors <- coef_names[p_values < 0.05 & coef_names != "(Intercept)"]
+  significant_pvals <- p_values[p_values < 0.05 & coef_names != "(Intercept)"]
+  
+  # Calculate the likelihood ratio test statistic and p-value manually
+  loglik_full <- model$loglik["full"]
+  loglik_null <- model$loglik["null"]
+  lrt_statistic <- -2 * (loglik_null - loglik_full)
+  lrt_p_value <- pchisq(lrt_statistic, df = 1, lower.tail = FALSE)
+  
+  return(list(formula = formula_str, LRT_P_Value = lrt_p_value, 
+              significant_factors = significant_factors, p_values = significant_pvals, model = model))
+}
+
+# Create a list to store the models and their results
+model_comparisons <- list()
+
+# Generate all possible combinations of LowPVars
+for (k in 1:length(LowPVars)) {
+  combinations <- combn(LowPVars, k, simplify = FALSE)
+  
+  for (combo in combinations) {
+    # Create the formula string
+    formula_str <- paste("ARV.DRM ~", paste(combo, collapse = " + "))
+    
+    # Fit the model and store the results
+    #model_name <- paste("Model with", paste(combo, collapse = ", "))
+    model_name <- formula_str
+    model_comparisons[[model_name]] <- fit_and_store_model(formula_str, data)
+  }
+}
+
+# Create a data frame to store results for all models
+model_results <- data.frame(
+  Model = names(model_comparisons),
+  LRT_P_Value = sapply(model_comparisons, function(x) round(x$LRT_P_Value, 5)),
+  Significant_Factors = sapply(model_comparisons, function(x) ifelse(length(x$significant_factors) == 0, 
+                                                                     "None", 
+                                                                     paste(x$significant_factors, collapse = ", "))),
+  P_Values = sapply(model_comparisons, function(x) ifelse(length(x$p_values) == 0, 
+                                                          "None", 
+                                                          paste(round(x$p_values, 5), collapse = ", ")))
+)
+
+
+# Use datatable() to create an interactive table
+datatable(model_results, options = list(pageLength = 10), rownames = FALSE)
+write.csv(file="Table_S2.csv",model_results)
+```
+
+### Results of the best model including cannabis
+
+```{r}
+# Fit the model using Firth logistic regression
+model <- logistf(ARV.DRM ~ Cannabis + Sex + Race, data = data)
+
+# Use summary() to get detailed results
+model_summary <- summary(model)
+
+tbl <- logistf_tablize(model_summary)
+datatable(tbl,rownames = FALSE)
+cannabis_in_best_multivariable <- tbl %>% filter(Variable=="CannabisPositive")
+cannabis_in_best_multivariable$Model <- "ARV.DRM ~ Cannabis + Sex + Race"
+cannabis_in_best_multivariable$Sample <- "Full sample"
+```
+
+### Results of the best model including IV drug use
+
+```{r}
+# Fit the model using Firth logistic regression
+model <- logistf(ARV.DRM ~ Length_of_Infection + Race + IV_Drug_Use,data=data)
+
+# Use summary() to get detailed results
+model_summary <- summary(model)
+
+tbl <- logistf_tablize(model_summary)
+datatable(tbl,rownames = FALSE)
+IV_in_best_multivariable <- tbl %>% filter(Variable=="IV_Drug_Use")
+IV_in_best_multivariable$Model <- "ARV.DRM ~ Length_of_Infection + Race + IV_Drug_Use"
+IV_in_best_multivariable$Sample <- "IV drug use responders"
+```
+
+### Consider the interaction between cannabis and polysubstance use
+
+Because we observed a trend in our data that participants who test positive for cannabis tend to test positive for other substances, we tested this relationship using Pearson's Chi-squared test and found a highly significant correlation. 
+
+```{r}
+# Create a contingency table
+table_data <- table(data$Cannabis, data$PolySubstance)
+# Perform a Chi-Square test
+chi_square_test <- chisq.test(table_data)
+print(chi_square_test)
+library(psych)
+# Calculate the phi correlation
+phi_correlation <- phi(table_data)
+print(phi_correlation)
+
+df_table <- as.data.frame(table_data)
+
+# Rename columns for better readability
+colnames(df_table) <- c("Cannabis", "PolySubstance", "Frequency")
+
+# Create a dot plot
+ggplot(df_table, aes(x = Cannabis, y = PolySubstance)) +
+  geom_point(aes(size = Frequency), color = "blue", alpha = 0.7) +
+  scale_size_continuous(range = c(3, 13)) +  # Adjust the range of dot sizes
+  labs(
+    x = "Cannabis Use",
+    y = "PolySubstance Use",
+    size = "Number of Observations",
+    title = "Dot Plot of Cannabis and PolySubstance Use"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    panel.grid.major = element_line(color = "gray80", linetype = "dashed")
+  )
+```
+
+## Consider the interaction between IV drug use and polysubstance use
+
+We tested this relationship using Pearson's Chi-squared test and did not find a significant correlation
+
+```{r}
+# Create a contingency table
+table_data <- table(data$IV_Drug_Use, data$PolySubstance)
+# Perform a Chi-Square test
+chi_square_test <- chisq.test(table_data)
+print(chi_square_test)
+library(psych)
+# Calculate the phi correlation
+phi_correlation <- phi(table_data)
+print(phi_correlation)
+
+df_table <- as.data.frame(table_data)
+
+# Rename columns for better readability
+colnames(df_table) <- c("IV_Drug_Use", "PolySubstance", "Frequency")
+
+# Create a dot plot
+ggplot(df_table, aes(x = IV_Drug_Use, y = PolySubstance)) +
+  geom_point(aes(size = Frequency), color = "blue", alpha = 0.7) +
+  scale_size_continuous(range = c(3, 13)) +  # Adjust the range of dot sizes
+  labs(
+    x = "IV Drug Use",
+    y = "PolySubstance Use",
+    size = "Number of Observations",
+    title = "Dot Plot of IV Drug Use and PolySubstance Use"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    panel.grid.major = element_line(color = "gray80", linetype = "dashed")
+  )
+```
+
+## Cannabis and polysubstance use
+
+To determine whether PolySubstance use is a confounder in the relationship between Cannabis use and ARV.DRM, we evaluated whether the inclusion of PolySubstance use in a regression model significantly changes the association between Cannabis use and ARV.DRM. A confounder is a variable that is associated with both the exposure (Cannabis use) and the outcome (ARV.DRM) and could distort the observed relationship.
+
+```{r}
+# Model with both Cannabis and PolySubstance use, controlling for sex and race
+cannabis_multivar_with_poly <- logistf(ARV.DRM ~ Cannabis + PolySubstance + Sex + Race, data = data)
+
+# Compare coefficients and p-values for Cannabis use in both models
+datatable(logistf_tablize(summary(cannabis_multivar_with_poly)),rownames = FALSE,caption="Results of model with polysubstance use")
+cannabis_in_best_with_poly <- logistf_tablize(summary(cannabis_multivar_with_poly))%>%filter(Variable=="CannabisPositive")
+cannabis_in_best_with_poly$Model <- "ARV.DRM ~ Cannabis + PolySubstance + Sex + Race"
+cannabis_in_best_with_poly$Sample <- "Full sample"
+```
+
+## IV Drug Use and polysubstance use
+
+Check it in case
+
+```{r}
+# Model with both IV_Drug_Use and PolySubstance use, controlling for sex and race
+IV_Drug_Use_multivar_with_poly <- logistf(ARV.DRM ~ IV_Drug_Use + PolySubstance + Length_of_Infection + Race, data = data)
+
+# Compare coefficients and p-values for IV_Drug_Use use in both models
+datatable(logistf_tablize(summary(IV_Drug_Use_multivar_with_poly)),rownames = FALSE,caption="Results of model with polysubstance use")
+IV_Drug_Use_in_best_with_poly <- logistf_tablize(summary(IV_Drug_Use_multivar_with_poly))%>%filter(Variable=="IV_Drug_Use")
+IV_Drug_Use_in_best_with_poly$Model <- "ARV.DRM ~ IV_Drug_Use + PolySubstance + Length_of_Infection + Race"
+IV_Drug_Use_in_best_with_poly$Sample <- "IV Drug Use Responses"
+```
+
+### Interaction between polysubstance use and cannabis use as a supressor variable
+
+Because including polysubstance in the model decreases the p-value and the odds-ratio for cannabis, we further considered whether there is an interaction between cannabis and polysubstance use, i.e., does the effect of being a cannabis user on ARV.DRM change depending on whether or not the participant is also a polysubstance user.
+
+We find evidence for polysubstance use and its interaction with cannabis as a suppressor variable: A variable that does not have a strong relationship with the outcome variable, but is related to another predictor, in this case, cannabis
+
+```{r}
+# Model with interaction term between Cannabis and PolySubstance, controlling for sex and race
+interaction_model <- logistf(ARV.DRM ~ Cannabis * PolySubstance + Sex + Race, data = data)
+datatable(logistf_tablize(summary(interaction_model)),rownames=FALSE,caption="Results of model with interaction between cannabis and polysubstance use")
+cannabis_in_best_with_polyinteraction <- logistf_tablize(summary(interaction_model))%>%filter(Variable=="CannabisPositive")
+cannabis_in_best_with_polyinteraction$Model <- "ARV.DRM ~ Cannabis * PolySubstance + Sex + Race"
+cannabis_in_best_with_polyinteraction$Sample <- "Full sample"
+```
+
+### Stratify the participants by polysubstance use status
+
+To understand how polysubstance use affects the relationship between cannabis use and ARV.DRM, we ran the best model on each level of polysubstance use.
+
+Our finding that cannabis use only has a significant effect on ARV.DRM within non-polysubstance users suggests that the documented negative effect of other drugs of abuse on HIV outcomes (not observed in this study) as well as the association between non-cannabis substance use and other higher-risk behaviors and characteristics (e.g. needle sharing, condomless sex, homelessness) may prevents the positive association between cannabis use and absence of ARV.DRM that is seen in non-polysubstance users.
+
+```{r}
+poly_data <- data %>% filter(PolySubstance == "Positive")
+poly_model <- logistf(ARV.DRM ~ Cannabis + Sex + Race, data = poly_data)
+datatable(logistf_tablize(summary(poly_model)),rownames=FALSE,caption="Results of best model with only polysubstance users")
+single_data <-  data %>% filter(PolySubstance == "Negative")
+single_model <- logistf(ARV.DRM ~ Cannabis + Sex + Race, data = single_data)
+datatable(logistf_tablize(summary(single_model)),rownames=FALSE,caption="Results of best model with only non polysubstance users")
+cannabis_in_poly_subset <- logistf_tablize(summary(poly_model))%>%filter(Variable=="CannabisPositive")
+cannabis_in_poly_subset$Model <- "ARV.DRM ~ Cannabis"
+cannabis_in_poly_subset$Sample <- "Polysubstance use participants"
+cannabis_in_nonpoly_subset <- logistf_tablize(summary(single_model))%>%filter(Variable=="CannabisPositive")
+cannabis_in_nonpoly_subset$Model <- "ARV.DRM ~ Cannabis"
+cannabis_in_nonpoly_subset$Sample <- "Cannabis only use participants"
+```
+
+```{r}
+#Combine all the cannabis results
+cannabis_dataframes <- ls(pattern = "^cannabis_in")
+
+# Combine all identified data frames using rbind
+cannabis_results <- do.call(rbind, mget(cannabis_dataframes))
+
+cannabis_results <- cannabis_results %>%
+  mutate(
+    `95% CI (OR)` = paste0(round(CI_Lower, 2), ", ", round(CI_Upper, 2))
+  ) %>%
+  select(-CI_Lower, -CI_Upper) # Remove the original columns
+write.csv(file="Table2.csv",cannabis_results)
+```
+
+It is helpful to visualize the data categories to understand the limitations of this analysis, mainly the relatively small number of ARV-DRM positive study participants limits the size of the categories.
+
+```{r,fig.dim=c(8.8)}
+# Load necessary libraries
+library(ggplot2)
+library(dplyr)
+
+# Create the data frame using dplyr
+df <- data %>%
+  group_by(Cannabis, PolySubstance, ARV.DRM) %>%
+  summarize(Frequency = n(), .groups = "drop")
+
+# Ensure the factors are in the correct order for plotting
+df$Cannabis <- factor(df$Cannabis, levels = c("Negative", "Positive"))
+df$PolySubstance <- factor(df$PolySubstance, levels = c("Negative", "Positive"))
+# Ensure ARV.DRM is a factor with levels in the correct order
+df$ARV.DRM <- factor(df$ARV.DRM, levels = c("Positive", "Negative"))
+
+# Create the bubble plot with adjusted spacing
+bubble_plot <- ggplot(df, aes(x = Cannabis, y = PolySubstance)) +
+  geom_point(aes(
+    size = Frequency,
+    fill = ifelse(PolySubstance == "Negative" & ARV.DRM == "Negative", "red", as.character(ARV.DRM))
+  ), shape = 21, color = "black", alpha = 0.7)+
+  geom_text(aes(
+    label = paste0("n=", Frequency),
+    hjust = ifelse(ARV.DRM == "Negative",
+                   ifelse(Cannabis == "Negative", 2.8, -2),  # Move left for Cannabis Negative, right for Cannabis Positive
+                   0.5),  # Center for ARV.DRM Positive
+    vjust = ifelse(Frequency == 1, -0.5, ifelse(ARV.DRM == "Positive", -2, 0.5))  # Move up for all ARV.DRM Positive, center for ARV.DRM Negative
+  ), size = 3) +
+  scale_size_continuous(range = c(1, 50),breaks = c(1, 10, 150, 200), guide = guide_legend(
+    title = "Number of Participants")) +
+  scale_fill_manual(
+    values = c("Positive" = "black", "Negative" = "lightgray", "red" = "red"),
+    labels = c("Positive", "Negative", "Negative (Polysubstance)"),
+    guide = guide_legend(title = "ARV.DRM"))+
+  scale_x_discrete(expand = expansion(mult = c(1.5,1.5))) +  # Adjust horizontal spacing
+  scale_y_discrete(expand = expansion(mult = c(1.5,1.5))) +  # Adjust vertical spacing
+  labs(
+    x = "Cannabis Use",
+    y = "Polysubstance Use",
+    title = "Participants' Cannabis Use, Polysubstance Use, and ARV-DRM status",
+    subtitle = "Bubble size indicates the number of observations"
+  ) +
+  annotate("text", x = 1.5, y = -0, label = "ARV-DRM ~ Cannabis + Sex + Race (in non polysubstance users)\nCannabis p-value: 0.025\nCannabis odds ratio (relative to no cannabis use): 0.19",
+           color = "red", size = 4, hjust = 0.5) +
+  theme_minimal() +
+theme_minimal() +
+  theme(
+    legend.position = "right",
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10),  # Increase legend text size
+    axis.text.x = element_text(size = 14),  # Increase x-axis label size
+    axis.text.y = element_text(size = 14),  # Increase y-axis label size
+    axis.title.x = element_text(size = 16, margin = margin(t = 10)),  # Increase x-axis title size
+    axis.title.y = element_text(size = 16, margin = margin(r = 10)),  # Increase y-axis title size
+    plot.title = element_text(size = 18, hjust = 0.5),  # Increase title size
+    plot.subtitle = element_text(size = 14, hjust = 0.5),
+    panel.background = element_rect(fill = "white", color = NA),  # Set panel background to white
+    plot.background = element_rect(fill = "white", color = NA)  # Increase subtitle size
+  )
+bubble_plot
+ggsave("bubble_plot.png", bubble_plot, width = 10, height = 7, dpi = 300)
+```
+
+Because firth binomial regression already accounts for the very small sample size in one of our cases, we provide an additional test for additional support and again find a significant result.
+
+```{r}
+# Create a contingency table
+table_data <- table(data$Cannabis, data$ARV.DRM, data$PolySubstance)
+
+# Perform Fisher's Exact Test on a specific subset, e.g., only the cases without polysubstance use
+# Subset the data for cases with PolySubstance == "Negative"
+subset_data <- data %>% filter(PolySubstance == "Negative")
+
+# Create a contingency table for the subset
+contingency_table <- table(subset_data$Cannabis, subset_data$ARV.DRM)
+
+# Run Fisher's Exact Test
+fisher_test_result <- fisher.test(contingency_table)
+print(fisher_test_result)
+```
+
+We perform a sensitivity to test to test how sensitive our analysis is to adding additional cases of ARV-DRM positive cannabis users to the data subset of non polysubstance users and find that if even one additional ARV-DRM positive and cannabis positive user was included in the dataset, the p-value of cannabis is only marginally significant.
+
+```{r}
+# Load necessary packages
+library(dplyr)
+library(logistf)
+
+# Create proportional additions based on the existing dataset
+# Calculate proportions for each factor
+cannabis_props <- table(single_data$Cannabis) / nrow(single_data)
+polysubstance_props <- table(single_data$PolySubstance) / nrow(single_data)
+sex_props <- table(single_data$Sex) / nrow(single_data)
+race_props <- table(single_data$Race) / nrow(single_data)
+
+# Specify the number of new participants to add
+n_new <- 43  # Adjust this as needed
+
+# Simulate new participants proportionally
+set.seed(42)  # For reproducibility
+new_rows <- data.frame(
+  Cannabis = sample(names(cannabis_props), size = n_new, replace = TRUE, prob = cannabis_props),
+  PolySubstance = sample(names(polysubstance_props), size = n_new, replace = TRUE, prob = polysubstance_props),
+  ARV.DRM = sample(c("Positive", "Negative"), size = n_new, replace = TRUE, prob = c(0.05, 0.95)), # Sample proportionally
+  Sex = sample(names(sex_props), size = n_new, replace = TRUE, prob = sex_props),
+  Race = sample(names(race_props), size = n_new, replace = TRUE, prob = race_props)
+)
+
+# Ensure single_data has only the columns that are in new_rows
+common_cols <- intersect(names(data), names(new_rows))
+data_subset <- data[, common_cols]
+
+# Combine the subsetted single_data with new_rows
+updated_data <- bind_rows(data_subset, new_rows)
+updated_data$ARV.DRM <- as.factor(updated_data$ARV.DRM)
+
+# Proceed with the analysis
+firth_model_updated <- logistf(ARV.DRM ~ Cannabis*PolySubstance + Sex + Race, data = updated_data)
+
+# Print the summary of the updated model
+model_summary <- summary(firth_model_updated)
+
+# Create a data frame for reporting
+report_df <- data.frame()
+  Variable = names(model_summary$coefficients)[-1]  # Exclude the intercept
+  P_Value = model_summary$prob[-1]
+
+# Create a data frame for reporting
+report_df <- data.frame(
+  Variable = names(model_summary$coefficients)[-1],  # Exclude the intercept
+  P_Value = model_summary$prob[-1],  # P-values
+  Odds_Ratio = exp(model_summary$coefficients[-1]),  # Odds Ratios
+  CI_Lower = exp(model_summary$ci.lower[-1]),  # Lower bound of 95% CI
+  CI_Upper = exp(model_summary$ci.upper[-1])   # Upper bound of 95% CI
+)
+
+# Round values for clarity
+report_df <- report_df %>%
+  mutate(
+    P_Value = round(P_Value, 4),
+    Odds_Ratio = round(Odds_Ratio, 2),
+    CI_Lower = round(CI_Lower, 2),
+    CI_Upper = round(CI_Upper, 2)
+  )
+
+# Display the updated results
+print(report_df)
+
+```
+
+## CSF
+
+```{r}
+CSF <- read.csv("data/TableS3.csv")
+
+library(janitor)
+
+# Sanitize column names
+CSF <- CSF %>%
+  janitor::clean_names()
+
+# Convert the percentage values to numeric
+CSF <- CSF %>%
+  mutate(csf_escape_percent_of_visits = as.numeric(gsub("%", "", csf_escape_csf_vl_plasma_vl_percent_of_visits)))
+
+# Create a numeric encoding for Urinalysis (0 = None, 1 and 2 = Substance use)
+CSF <- CSF %>%
+  mutate(urinalysis_numeric = case_when(
+    urinalysis == "None" ~ 0,
+    TRUE ~ 1 # Combine all substance use into 1
+  ))
+
+t_test <- t.test(
+  csf_escape_percent_of_visits ~ urinalysis_numeric,
+  data = CSF,
+  var.equal = TRUE # Use var.equal = FALSE if variances differ significantly
+)
+
+# Print results
+cat("T-test results:\n")
+cat("Mean CSF Escape (% of visits) for Non-Users:", 
+    mean(CSF$csf_escape_percent_of_visits[CSF$urinalysis_numeric == 0], na.rm = TRUE), "\n")
+cat("Mean CSF Escape (% of visits) for Users:", 
+    mean(CSF$csf_escape_percent_of_visits[CSF$urinalysis_numeric == 1], na.rm = TRUE), "\n")
+cat("P-value for the t-test:", round(t_test$p.value, 4), "\n")
+```
+
+```{r}
+# Recode polysubstance use based on cannabis use
+data$poly_by_cannabis <- with(data, ifelse(
+  PolySubstance == "Negative" & Num_of_Substances == 0, 
+  "No drug use", 
+  ifelse(PolySubstance == "Negative" & Num_of_Substances == 1, 
+         "Single drug use", 
+         ifelse(Cannabis == "Positive", 
+                "Positive_with_cannabis", 
+                "Positive_without_cannabis")
+  )
+))
+
+# Set "No drug use" as the reference level
+data$poly_by_cannabis <- factor(data$poly_by_cannabis, levels = c("No drug use", "Single drug use", "Positive_with_cannabis", "Positive_without_cannabis"))
+
+# Run the logistf model
+logistf_model <- logistf(ARV.DRM ~ poly_by_cannabis, data = data)
+
+logistf_results <- logistf_tablize(summary(logistf_model))
+
+# View the results
+print(logistf_results)
+```
+
+```{r}
+library(curl)
+# Path to save the downloaded file
+output_file <- "CSF_escape.xlsx"
+curl_download("https://uflorida-my.sharepoint.com/:x:/g/personal/pinkp0wr_ufl_edu/EZO0YD_hed1Btd-XGYab2_QBkxja10mZmnay3wMRkp7PiQ?e=9uYdm3",output_file)
+CSF <- read_excel("CSF_escape.xlsx",sheet=3)
+getwd()
+```
+
+CSF Escape 
+
+```{r}
+library(readxl)
+# Define the file path
+file_path <- "original_data/Substance Use & CSF Escape.xlsx"
+
+# Get the names of all sheets in the Excel file
+sheet_names <- excel_sheets(file_path)
+
+# Read each sheet into a data frame and store in a list, naming each element by its sheet name
+data_frames <- lapply(sheet_names, function(sheet) {
+  read_excel(file_path, sheet = sheet)
+})
+names(data_frames) <- sheet_names
+
+library(dplyr)
+
+# Extract the relevant data frame
+df <- data_frames[["Urinalysis & VL Combined"]]
+
+# Fix the typo in the column name
+colnames(df)[colnames(df) == "CSF Ecsape with Plasma Suppression"] <- "CSF Escape with Plasma Suppression"
+
+# Summarize the data
+summary_df <- df %>%
+  group_by(PATID) %>%
+  summarize(
+    `CSF Escape` = ifelse(any(`CSF Escape` == 1), 1, 0),
+    `CSF Escape with Plasma Suppression` = ifelse(any(`CSF Escape with Plasma Suppression` == 1), 1, 0)
+  )
+
+orig_data <- read.csv("original_data/Hale2023_originalData.csv")
+
+summary_df <- merge(summary_df,orig_data,by="PATID")
+
+library(logistf)
+# Define models for Set 1
+model_1 <- logistf(`CSF Escape` ~ ARVDRM, data = summary_df)
+model_2 <- logistf(`CSF Escape` ~ Cannabis, data = summary_df)
+model_3 <- logistf(`CSF Escape` ~ Cannabis + Poly_Substance, data = summary_df)
+model_4 <- logistf(`CSF Escape` ~ Cannabis * Poly_Substance, data = summary_df)
+model_5 <- logistf(`CSF Escape with Plasma Suppression` ~ Cannabis, data = summary_df)
+model_6 <- logistf(`CSF Escape with Plasma Suppression` ~ Cannabis + Poly_Substance, data = summary_df)
+model_7 <- logistf(`CSF Escape with Plasma Suppression` ~ Cannabis * Poly_Substance, data = summary_df)
+
+# Define models for Set 2
+model_8 <- logistf(ARVDRM ~`CSF Escape`, data = summary_df)
+model_9 <- logistf(ARVDRM ~`CSF Escape` + Cannabis + Poly_Substance, data = summary_df)
+model_10 <- logistf(ARVDRM ~`CSF Escape` + Cannabis * Poly_Substance, data = summary_df)
+model_11 <- logistf(ARVDRM ~ `CSF Escape with Plasma Suppression` + Cannabis, data = summary_df)
+model_12 <- logistf(ARVDRM ~ `CSF Escape with Plasma Suppression` + Cannabis + Poly_Substance, data = summary_df)
+model_13 <- logistf(ARVDRM ~ `CSF Escape with Plasma Suppression` + Cannabis * Poly_Substance, data = summary_df)
+
+# Store models in a list for easy access
+models <- list(
+  model_1, model_2, model_3, model_4, model_5, model_6,
+  model_7, model_8, model_9, model_10, model_11, model_12,model_13
+)
+summary <- summary(model_8)
+logistf_tablize(summary)
+
+# Define a function to extract and process each model
+process_model <- function(model, model_index) {
+  # Extract model summary
+  model_summary <- summary(model)
+  
+  # Tabulate the results using your custom function
+  tabulated <- logistf_tablize(model_summary)
+  
+  # Add columns for model name and outcome
+  tabulated$Model <- paste0("Model ", model_index, ": ", deparse(formula(model)))
+  tabulated$Outcome <- as.character(formula(model)[[2]])  # Extract left-hand side of the formula
+  
+  return(tabulated)
+}
+
+# Apply the function to all models and combine results
+model_results <- do.call(rbind, lapply(seq_along(models), function(i) {
+  process_model(models[[i]], i)
+}))
+
+# View the final combined data frame
+head(model_results)
+
+#Amphetamine (Add this to the text)
+Amphetamine_CSF <- summary(logistf(`CSF Escape` ~ Amphetamine, data = summary_df))
+logistf_tablize(Amphetamine_CSF)
+Amphetamine_ARVDRM <- summary(logistf(ARVDRM ~ Amphetamine, data = summary_df))
+logistf_tablize(Amphetamine_ARVDRM)
+```
+
+High viremia
+
+```{r}
+# Cannabis and viral load
+# Make a high viremia variable per vist
+df <- df %>%
+  mutate(high_viremia = ifelse(`Plasma Viral Load` > 1000, 1, 0))
+
+#Add poly
+df <- df %>% mutate(PolySubstance = ifelse(`# of Substances`>1,1,0))
+library(lme4)
+
+model_with_Poly <- glmer(high_viremia ~ Marijuana*PolySubstance + (1 | PATID), 
+               data = df, family = binomial)
+summary(model_with_Poly)
+# Extract the fixed-effect coefficient
+exp(fixef(model_with_Poly)["Marijuana"])
+
+model_without_Poly <- glmer(high_viremia ~ Marijuana + (1 | PATID), 
+               data = df, family = binomial)
+summary(model_without_Poly)
+```
+
+```{r}
+#Subset to remove all polysubstance users
+df_marijuana_or_none <- df %>%
+  filter(Marijuana %in% c(0, 1) &  # Include only rows with Marijuana = 0 or 1
+           Cocaine == 0 &          # Ensure no use of other substances
+           Opiates == 0 &
+           Meth == 0 &
+           Amphetamines == 0 &
+           Sedatives == 0 &
+           PCP == 0)
+
+model_marijuana_or_none <- glmer(high_viremia ~ Marijuana + (1 | PATID), 
+     data = df_marijuana_or_none, family = binomial)
+summary(model_marijuana_or_none)
+
+library(ggplot2)
+# Summarize data
+summary_df <- df_marijuana_or_none %>%
+  group_by(Marijuana) %>%
+  summarize(Proportion_High_Viremia = mean(high_viremia), Count = n())
+ggplot(df_marijuana_or_none, aes(x = as.factor(high_viremia), fill = as.factor(Marijuana))) +
+  geom_bar(position = "fill") +
+  labs(
+    title = "Proportion of Marijuana Use in High vs Low Viremia",
+    x = "High Viremia (0 = No, 1 = Yes)",
+    y = "Proportion",
+    fill = "Marijuana Use"
+  )
+```
+
+```{r}
+# Calculate odds ratio and 95% confidence intervals for glmer model
+coefs <- summary(model_marijuana_or_none)$coefficients
+z_score <- 1.96  # For 95% confidence interval
+
+# Calculate odds ratio and confidence intervals
+OR <- exp(coefs[, "Estimate"])
+CI_lower <- exp(coefs[, "Estimate"] - z_score * coefs[, "Std. Error"])
+CI_upper <- exp(coefs[, "Estimate"] + z_score * coefs[, "Std. Error"])
+
+# Format results in a data frame
+OR_results <- data.frame(
+  Variable = rownames(coefs),
+  Odds_Ratio = round(OR, 2),
+  CI_Lower = round(CI_lower, 2),
+  CI_Upper = round(CI_upper, 2)
+)
+
+# Print results
+print(OR_results)
+```
